@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lucas' Snake Game</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <style>
+    body { background: #181818; display: flex; flex-direction: column; align-items: center; font-family: 'Segoe UI', Arial, sans-serif; }
+    h1 { color: #fff; margin-top: 30px; font-size: 2.2em; }
+    #gameArea { position: relative; }
+    canvas { background: #111; display: block; margin: 30px auto; border-radius: 16px; border: 4px solid #444; touch-action: none; }
+    .menu, .scoreboard { position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+      display: flex; flex-direction: column; justify-content: center; align-items: center; 
+      z-index: 10;
+    }
+    .menu { background: rgba(20,20,20,0.8); }
+    .scoreboard { background: rgba(10,10,10,0.9); }
+    .menu button, .scoreboard button {
+      margin: 10px; font-size: 1.2em; padding: 18px 50px;
+      border-radius: 10px; border: none;
+      background: #7f5af0; color: #fff; cursor: pointer;
+      transition: background 0.2s;
+      min-width: 180px;
+      touch-action: manipulation;
+    }
+    .menu button:active, .scoreboard button:active,
+    .menu button.active, .scoreboard button.active {
+      background: #2cb67d;
+    }
+    #score { color: #fff; font-size: 1.2em; text-align: center; margin-top: 10px; margin-bottom: 0px; }
+    .podium { display: flex; align-items: flex-end; justify-content: center; height: 150px; margin-bottom: 18px; position: relative; }
+    .podium-block { width: 60px; margin: 0 12px; background: #333; border-radius: 8px 8px 0 0; display: flex; align-items: flex-end; justify-content: center; position: relative;}
+    .first { height: 100px; background: gold; }
+    .second { height: 70px; background: silver; }
+    .third { height: 50px; background: #cd7f32; }
+    .podium-text { color: #000; text-align: center; font-weight: bold; font-size: 1.1em; margin-top: 4px; }
+    .score-num {
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 1.5em;
+      color: #fff;
+      text-shadow: 0 0 8px #181818, 0 0 10px #000;
+      min-width: 40px;
+      text-align: center;
+    }
+    #countdown { 
+      position: absolute; 
+      top: 50%; left: 50%; 
+      transform: translate(-50%,-50%); 
+      color: #fff; font-size: 4em; 
+      background: rgba(20,20,20,0.8); 
+      padding: 30px 60px; 
+      border-radius: 24px; 
+      display: none; 
+      z-index: 12;
+      text-shadow: 0 0 18px #2cb67d, 0 0 22px #7f5af0;
+    }
+    @media (max-width: 500px) {
+      #gameArea { width: 100vw; height: 100vw; max-width: 100vw; max-height: 100vw;}
+      canvas { width: 96vw !important; height: 96vw !important; max-width: 96vw; max-height: 96vw;}
+      .menu button, .scoreboard button { font-size: 1.5em; padding: 22px 0; min-width: 90vw;}
+    }
+  </style>
+</head>
+<body>
+  <h1>Lucas' Snake Game</h1>
+  <div id="gameArea" style="width:420px; height:420px; position:relative;">
+    <canvas id="game" width="400" height="400"></canvas>
+    <!-- Start Menu -->
+    <div id="startMenu" class="menu">
+      <div style="color:#fff; font-size:2em; margin-bottom:18px;">🐍 Lucas' Snake Game</div>
+      <button id="playBtn">Play</button>
+      <button id="highScoreBtn">High Score</button>
+    </div>
+    <!-- Scoreboard (High Score) -->
+    <div id="scoreboard" class="scoreboard" style="display:none;">
+      <div style="color:#fff; font-size:2em; margin-bottom:8px;">🏆 High Scores</div>
+      <div class="podium">
+        <div class="podium-block second">
+          <span class="score-num" id="score2"></span>
+          <span class="podium-text">2</span>
+        </div>
+        <div class="podium-block first">
+          <span class="score-num" id="score1"></span>
+          <span class="podium-text">1</span>
+        </div>
+        <div class="podium-block third">
+          <span class="score-num" id="score3"></span>
+          <span class="podium-text">3</span>
+        </div>
+      </div>
+      <button id="backBtnHS">Back</button>
+    </div>
+    <!-- Game Over Menu -->
+    <div id="gameOverMenu" class="menu" style="display:none;">
+      <div style="color:#fff; font-size:2em; margin-bottom:18px;">Game Over!</div>
+      <div id="finalScore" style="color:#fff; font-size:1.2em; margin-bottom:10px;"></div>
+      <button id="againBtn">Play Again</button>
+      <button id="highScoreBtnOver">High Scores</button>
+      <button id="backBtnOver">Back</button>
+    </div>
+    <!-- Countdown -->
+    <div id="countdown">3</div>
+  </div>
+  <div id="score"></div>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const box = 20;
+    const size = 400;
+    let snake, direction, apple, score, highScores, running, pressed;
+    let waitingForFirstMove, started, countdownTimeout, moveTimer;
+    let startMenu = document.getElementById('startMenu');
+    let gameOverMenu = document.getElementById('gameOverMenu');
+    let scoreboard = document.getElementById('scoreboard');
+    let finalScore = document.getElementById('finalScore');
+    let scoreText = document.getElementById('score');
+    let countdownDiv = document.getElementById('countdown');
+    let highScoreSpans = [
+      document.getElementById('score1'),
+      document.getElementById('score2'),
+      document.getElementById('score3')
+    ];
+    // For touch/swipe
+    let touchStartX = null, touchStartY = null, touchMoved = false;
+
+    // Classic grid movement
+    const TICK_MS = 160; // Classic speed
+
+    function resetGame() {
+      snake = [
+        {x: 10*box, y: 10*box, head:true, dir:'RIGHT'},
+        {x: 9*box, y: 10*box, head:false, dir:'RIGHT'},
+        {x: 8*box, y: 10*box, head:false, dir:'RIGHT'},
+        {x: 7*box, y: 10*box, head:false, dir:'RIGHT'}
+      ];
+      direction = null;
+      pressed = false;
+      waitingForFirstMove = true;
+      started = false;
+      apple = randomApple();
+      score = 0;
+      loadHighScores();
+      updateScoreDisplay();
+      running = true;
+    }
+
+    function drawSnake() {
+      for (let i = 0; i < snake.length; i++) {
+        let seg = snake[i];
+        ctx.save();
+        ctx.translate(seg.x + box/2, seg.y + box/2);
+        ctx.beginPath();
+        ctx.arc(0, 0, box/2-1, 0, 2 * Math.PI);
+        ctx.fillStyle = seg.head ? '#3ee37b' : '#2cb67d';
+        ctx.shadowColor = seg.head ? '#fff' : '#000';
+        ctx.shadowBlur = seg.head ? 10 : 0;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // Draw head eyes if moving
+        let drawDir = direction || 'RIGHT';
+        if (seg.head && drawDir) {
+          let dx = drawDir === 'LEFT' ? -1 : drawDir === 'RIGHT' ? 1 : 0;
+          let dy = drawDir === 'UP' ? -1 : drawDir === 'DOWN' ? 1 : 0;
+          ctx.beginPath();
+          ctx.arc(-5 + 4*dx, -5 + 4*dy, 3, 0, 2*Math.PI);
+          ctx.arc( 5 + 4*dx, -5 + 4*dy, 3, 0, 2*Math.PI);
+          ctx.fillStyle = '#222';
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+
+    function drawApple() {
+      ctx.save();
+      ctx.translate(apple.x + box/2, apple.y + box/2);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, box/2.1, box/2.4, 0, 0, 2 * Math.PI);
+      ctx.fillStyle = '#e94f37';
+      ctx.shadowColor = '#c72616';
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(-3, -6, 4, 2, Math.PI / 6, 0, Math.PI*2);
+      ctx.fillStyle = '#fff8';
+      ctx.shadowBlur = 0;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0, -box/2.2);
+      ctx.lineTo(0, -box/1.5);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#874c14";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(6, -box/2.2, 4, 2, Math.PI/4, 0, 2*Math.PI);
+      ctx.fillStyle = '#2cb67d';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, size, size);
+      drawApple();
+      drawSnake();
+    }
+
+    function randomApple() {
+      let pos, collision;
+      do {
+        pos = {
+          x: Math.floor(Math.random() * (size/box)) * box,
+          y: Math.floor(Math.random() * (size/box)) * box
+        };
+        collision = snake.some(seg => seg.x===pos.x && seg.y===pos.y);
+      } while (collision);
+      return pos;
+    }
+
+    function moveSnake() {
+      if (waitingForFirstMove) return;
+      let head = {...snake[0], head:false};
+      let dx = direction === 'LEFT' ? -box : direction === 'RIGHT' ? box : 0;
+      let dy = direction === 'UP' ? -box : direction === 'DOWN' ? box : 0;
+      let newHead = {
+        x: head.x + dx,
+        y: head.y + dy,
+        head: true,
+        dir: direction
+      };
+      if (newHead.x < 0 || newHead.x >= size || newHead.y < 0 || newHead.y >= size) {
+        running = false;
+        endGame();
+        return;
+      }
+      for (let i=0; i<snake.length; i++) {
+        if (snake[i].x===newHead.x && snake[i].y===newHead.y) {
+          running = false;
+          endGame();
+          return;
+        }
+      }
+      snake.unshift(newHead);
+      snake[1].head = false;
+      if (newHead.x === apple.x && newHead.y === apple.y) {
+        score += 10;
+        updateScoreDisplay();
+        apple = randomApple();
+      } else {
+        snake.pop();
+      }
+    }
+
+    function gameLoop() {
+      if (!running) return;
+      moveSnake();
+      draw();
+      moveTimer = setTimeout(gameLoop, TICK_MS);
+      pressed = false;
+    }
+
+    function handleKey(e) {
+      if (startMenu.style.display === 'flex' && (e.key === ' ' || e.key === 'Enter')) {
+        initiateCountdown();
+        return;
+      }
+      if (scoreboard.style.display === 'flex' && (e.key === ' ' || e.key === 'Enter' || e.key === 'Escape')) {
+        hideHighScore();
+        return;
+      }
+      if (gameOverMenu.style.display === 'flex') {
+        if (e.key === ' ' || e.key === 'Enter') { restartGame(); return; }
+        if (e.key === 'Escape') { backToMainMenu(); return; }
+      }
+      if (!running) return;
+      if (waitingForFirstMove) {
+        if (['ArrowLeft','ArrowUp','ArrowRight','ArrowDown'].includes(e.key)) {
+          waitingForFirstMove = false;
+          if (e.key === 'ArrowLeft') direction = 'LEFT';
+          if (e.key === 'ArrowUp') direction = 'UP';
+          if (e.key === 'ArrowRight') direction = 'RIGHT';
+          if (e.key === 'ArrowDown') direction = 'DOWN';
+        }
+      } else {
+        if (pressed) return;
+        if (e.key === 'ArrowLeft' && direction !== 'RIGHT') { direction = 'LEFT'; pressed = true; }
+        if (e.key === 'ArrowUp' && direction !== 'DOWN') { direction = 'UP'; pressed = true; }
+        if (e.key === 'ArrowRight' && direction !== 'LEFT') { direction = 'RIGHT'; pressed = true; }
+        if (e.key === 'ArrowDown' && direction !== 'UP') { direction = 'DOWN'; pressed = true; }
+      }
+    }
+
+    // Touch controls for swipe
+    canvas.addEventListener('touchstart', function(e){
+      if (!running) return;
+      if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchMoved = false;
+      }
+    });
+    canvas.addEventListener('touchmove', function(e){
+      touchMoved = true;
+    });
+    canvas.addEventListener('touchend', function(e){
+      if (!running) return;
+      if (touchStartX === null || touchStartY === null) return;
+      if (!touchMoved) return;
+      let touchEndX = e.changedTouches[0].clientX;
+      let touchEndY = e.changedTouches[0].clientY;
+      let dx = touchEndX - touchStartX;
+      let dy = touchEndY - touchStartY;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal swipe
+        if (dx < -10 && direction !== 'RIGHT') { // Left
+          if (waitingForFirstMove) { direction = 'LEFT'; waitingForFirstMove = false; }
+          else if (!pressed) { direction = 'LEFT'; pressed = true; }
+        } else if (dx > 10 && direction !== 'LEFT') { // Right
+          if (waitingForFirstMove) { direction = 'RIGHT'; waitingForFirstMove = false; }
+          else if (!pressed) { direction = 'RIGHT'; pressed = true; }
+        }
+      } else {
+        // Vertical swipe
+        if (dy < -10 && direction !== 'DOWN') { // Up
+          if (waitingForFirstMove) { direction = 'UP'; waitingForFirstMove = false; }
+          else if (!pressed) { direction = 'UP'; pressed = true; }
+        } else if (dy > 10 && direction !== 'UP') { // Down
+          if (waitingForFirstMove) { direction = 'DOWN'; waitingForFirstMove = false; }
+          else if (!pressed) { direction = 'DOWN'; pressed = true; }
+        }
+      }
+      touchStartX = null; touchStartY = null; touchMoved = false;
+    });
+
+    function loadHighScores() {
+      let arr = JSON.parse(localStorage.getItem('lucasSnakeHighScores') || '[]');
+      while (arr.length < 3) arr.push(0);
+      highScores = arr.slice(0,3);
+    }
+    function saveHighScores() {
+      highScores.push(score);
+      highScores = highScores.filter(x => typeof x === 'number' && !isNaN(x));
+      highScores = [...new Set(highScores)].sort((a,b)=>b-a).slice(0,3);
+      localStorage.setItem('lucasSnakeHighScores', JSON.stringify(highScores));
+    }
+
+    function updateScoreDisplay() {
+      scoreText.innerHTML = 'Score: ' + score;
+    }
+
+    function updateScoreboardPodium() {
+      loadHighScores();
+      highScoreSpans[0].textContent = highScores[0];
+      highScoreSpans[1].textContent = highScores[1];
+      highScoreSpans[2].textContent = highScores[2];
+    }
+
+    function initiateCountdown() {
+      startMenu.style.display = 'none';
+      gameOverMenu.style.display = 'none';
+      scoreboard.style.display = 'none';
+      countdownDiv.style.display = 'block';
+      countdownDiv.textContent = '3';
+      let count = 3;
+      function updateCountdown() {
+        if (count > 1) {
+          count--;
+          countdownDiv.textContent = count;
+          countdownTimeout = setTimeout(updateCountdown, 600);
+        } else {
+          countdownDiv.textContent = 'GO!';
+          setTimeout(() => {
+            countdownDiv.style.display = 'none';
+            startGame();
+          }, 500);
+        }
+      }
+      resetGame();
+      draw();
+      setTimeout(updateCountdown, 600);
+    }
+
+    function startGame() {
+      started = true;
+      clearTimeout(moveTimer);
+      gameLoop();
+    }
+
+    function endGame() {
+      clearTimeout(moveTimer);
+      saveHighScores();
+      updateScoreDisplay();
+      finalScore.innerHTML = `Your Score: <b>${score}</b>`;
+      gameOverMenu.style.display = 'flex';
+    }
+
+    function restartGame() {
+      gameOverMenu.style.display = 'none';
+      initiateCountdown();
+    }
+
+    function showHighScore() {
+      updateScoreboardPodium();
+      startMenu.style.display = 'none';
+      gameOverMenu.style.display = 'none';
+      scoreboard.style.display = 'flex';
+    }
+    function hideHighScore() {
+      scoreboard.style.display = 'none';
+      startMenu.style.display = 'flex';
+    }
+    function backToMainMenu() {
+      gameOverMenu.style.display = 'none';
+      startMenu.style.display = 'flex';
+    }
+
+    document.addEventListener('keydown', handleKey);
+
+    // --- Mobile button touch fix (bulletproof) ---
+    function patchButton(id, handler) {
+      const btn = document.getElementById(id);
+      let touched = false;
+      btn.addEventListener('touchstart', function(e) {
+        touched = true;
+        btn.classList.add('active');
+        e.preventDefault();
+      }, {passive:false});
+      btn.addEventListener('touchend', function(e) {
+        if (touched) {
+          btn.classList.remove('active');
+          handler();
+          touched = false;
+        }
+        e.preventDefault();
+        btn.blur();
+      }, {passive:false});
+      btn.addEventListener('touchcancel', function(e) {
+        btn.classList.remove('active');
+        touched = false;
+        e.preventDefault();
+        btn.blur();
+      }, {passive:false});
+      btn.addEventListener('click', function(e) {
+        handler();
+        btn.blur();
+      });
+    }
+    patchButton('playBtn', initiateCountdown);
+    patchButton('highScoreBtn', showHighScore);
+    patchButton('backBtnHS', hideHighScore);
+    patchButton('againBtn', restartGame);
+    patchButton('highScoreBtnOver', showHighScore);
+    patchButton('backBtnOver', backToMainMenu);
+
+    // Initial draw
+    resetGame();
+    draw();
+    updateScoreDisplay();
+  </script>
+</body>
+</html>
